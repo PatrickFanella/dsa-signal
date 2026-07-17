@@ -1,8 +1,9 @@
-# TypeScript Backend + Vite React TypeScript + Postgres + Docker Template
+# dsa-signal
 
-Full-stack TypeScript template with Node backend, Vite React TypeScript Tailwind frontend, Postgres, Docker Compose, and Open Pilot conventions.
+Membership-gated encrypted communications app built on a private Matrix E2EE
+substrate, with `dsa-proto` providing identity and organizational authority.
 
-Created from `subculture-collective/project-template`.
+> This project is not affiliated or interoperable with Signal. Matrix E2EE protects message content, not service-visible account, room, device, timing, IP, or access metadata. The web client remains vulnerable to a compromised application origin.
 
 ## Quick start
 
@@ -12,12 +13,7 @@ make verify
 
 ## Open Pilot
 
-This repository keeps the base Open Pilot issue template and PR template.
-Bootstrap labels after creating a repo from this template:
-
-```bash
-open-pilot labels bootstrap subculture-collective/project-template-ts-vite-react-ts-postgres-docker
-```
+This repository preserves the Open Pilot issue and PR templates.
 
 ## License
 

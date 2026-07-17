@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help deps verify fmt lint test build compose-config open-pilot-check
+.PHONY: help deps verify fmt lint test security-contract build compose-config open-pilot-check
 
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "Commands:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -20,7 +20,10 @@ lint:
 test:
 	pnpm run test
 
-build:
+security-contract:
+	pnpm run security-contract
+
+build: security-contract
 	pnpm run build
 
 compose-config:
