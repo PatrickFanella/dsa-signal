@@ -35,7 +35,7 @@ Avoid base-level changes such as:
 
    ```bash
    make verify
-   docker compose config --quiet
+   docker compose --env-file deploy/locks/images.env --env-file .env.example config --quiet
    ```
 
 4. Update docs if the workflow changes.

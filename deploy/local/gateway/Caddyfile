@@ -1,0 +1,55 @@
+{
+	admin off
+}
+
+https://chat.localhost:8443 {
+	tls internal
+	route {
+		@gatewayHealth path /_gateway/health
+		respond @gatewayHealth "ok" 200
+		@wellknownOptions {
+			method OPTIONS
+			path /.well-known/matrix/client
+		}
+		handle @wellknownOptions {
+			header Access-Control-Allow-Origin "https://chat.localhost:8443"
+			header Access-Control-Allow-Methods "GET, OPTIONS"
+			header Vary Origin
+			respond "" 204
+		}
+		@wellknown path /.well-known/matrix/client
+		handle @wellknown {
+			rewrite * /matrix-client.json
+			root * /srv/well-known
+			header Access-Control-Allow-Origin "https://chat.localhost:8443"
+			header Vary Origin
+			header Content-Type application/json
+			file_server
+		}
+		@api path /v1/* /oidc/* /health /.well-known/oauth-authorization-server/oidc
+		handle @api {
+			reverse_proxy api:8080
+		}
+		handle {
+			reverse_proxy web:80
+		}
+	}
+}
+https://auth.localhost:8443 {
+	tls internal
+	reverse_proxy mas:8080
+}
+https://matrix.localhost:8443 {
+	tls internal
+	@denied path /_matrix/federation/* /_matrix/key/* /_synapse/admin/*
+	respond @denied 404
+	@mas path /_matrix/client/*/login /_matrix/client/*/logout /_matrix/client/*/refresh /_matrix/client/*/register
+	handle @mas {
+		reverse_proxy mas:8080
+	}
+	@synapse path /_matrix/client/* /_matrix/media/* /_synapse/client/*
+	handle @synapse {
+		reverse_proxy synapse:8008
+	}
+	respond 404
+}

@@ -1,0 +1,47 @@
+{
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": [
+            ":8080"
+          ],
+          "logs": {
+            "default_logger_name": "log0"
+          },
+          "routes": [
+            {
+              "handle": [
+                {
+                  "body": "canary",
+                  "handler": "static_response",
+                  "status_code": 200
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "exclude": [
+          "http.log.access.log0"
+        ]
+      },
+      "log0": {
+        "encoder": {
+          "format": "json"
+        },
+        "include": [
+          "http.log.access.log0"
+        ],
+        "writer": {
+          "output": "stdout"
+        }
+      }
+    }
+  }
+}

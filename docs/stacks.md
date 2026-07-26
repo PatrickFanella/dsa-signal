@@ -88,7 +88,7 @@ cargo test --all
 This base includes an optional local Postgres compose profile:
 
 ```bash
-docker compose --profile db up -d postgres
+docker compose --env-file deploy/locks/images.env --env-file .env --profile db up -d postgres
 ```
 
 Derived templates should add migrations under `migrations/` or the stack-specific convention.

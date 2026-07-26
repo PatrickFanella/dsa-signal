@@ -1,0 +1,144 @@
+{
+  "sdkVersion": "42.0.0",
+  "matrixSpec": "v1.16",
+  "unknownFields": "reject",
+  "validationTargets": {
+    "browserSendBody": "validate only the exact matching event content schema; request path supplies room/event type; no freshness decision is made",
+    "serverEvent": "validate the exact server envelope plus recursively validated content; freshness uses origin_server_ts"
+  },
+  "dsl": {
+    "matrix-user-id": "string matching ^@[^:]+:.+$",
+    "matrix-device-id": "nonempty string up to 255 code units",
+    "matrix-event-id": "string matching ^\\$[^\\s]+$",
+    "matrix-room-id": "string matching ^![^:]+:.+$",
+    "safe-integer-milliseconds": "nonnegative JavaScript safe integer",
+    "unpadded-base64": "canonical unpadded RFC4648 standard Base64 (alphabet A-Za-z0-9+/, no whitespace or equals padding; decode then re-encode must be identical)",
+    "unpadded-base64-public-ephemeral": "exactly 32 decoded bytes of unpadded-base64 encoding of a public ephemeral key; never a private key",
+    "unpadded-base64-mac": "exactly 32 decoded bytes of unpadded-base64 protocol MAC output; never a derived displayed SAS value",
+    "ordered-subset:A,B": "nonempty array containing only A or B, no duplicates, order preserved",
+    "object-of-key-id-to-unpadded-base64-mac": "nonempty object; keys are Matrix key IDs; values are unpadded-base64; no prototype/unknown metadata keys",
+    "standard-human-fallback-only": "exact string: <expected sender Matrix user ID> + ' is requesting to verify your key, but your client does not support in-chat key verification. You will need to use legacy key verification to verify keys.'",
+    "bounded Matrix transaction ID": "string matching ^[A-Za-z0-9._~-]{1,128}$",
+    "reference-relation": "exact sharedTypes.reference-relation object"
+  },
+  "envelope": {
+    "required": {
+      "type": "exact event outerType",
+      "content": "exact matching event content schema",
+      "sender": "matrix-user-id",
+      "event_id": "matrix-event-id",
+      "origin_server_ts": "safe-integer-milliseconds"
+    },
+    "optional": {
+      "room_id": "matrix-room-id when the response shape omits it and capture context supplies the exact room",
+      "unsigned": "exact unsigned schema"
+    },
+    "unknownFields": "reject"
+  },
+  "forbiddenValues": [
+    "chat-canary",
+    "derived-sas-decimal",
+    "derived-sas-emoji",
+    "private-key",
+    "secret-key"
+  ],
+  "forbiddenValueMatching": "case-sensitive UTF-8 substring search over every decoded string plus raw-byte search; runtime adds the live chat canary, planted scanner marker, exact displayed SAS decimal strings, emoji glyphs, and emoji labels; expected sender is supplied independently from validated operation context, never inferred from fallback body",
+  "events": {
+    "request": {
+      "outerType": "m.room.message",
+      "required": {
+        "msgtype": ["m.key.verification.request"],
+        "to": "matrix-user-id",
+        "from_device": "matrix-device-id",
+        "methods": [["m.sas.v1"]],
+        "body": "standard-human-fallback-only"
+      },
+      "optional": {}
+    },
+    "ready": {
+      "outerType": "m.key.verification.ready",
+      "required": {
+        "from_device": "matrix-device-id",
+        "methods": [["m.sas.v1"]],
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "start": {
+      "outerType": "m.key.verification.start",
+      "required": {
+        "from_device": "matrix-device-id",
+        "method": ["m.sas.v1"],
+        "key_agreement_protocols": [["curve25519-hkdf-sha256"]],
+        "hashes": [["sha256"]],
+        "message_authentication_codes": "ordered-subset:hkdf-hmac-sha256.v2,org.matrix.msc3783.hkdf-hmac-sha256",
+        "short_authentication_string": "ordered-subset:decimal,emoji",
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "accept": {
+      "outerType": "m.key.verification.accept",
+      "required": {
+        "commitment": "exactly 32 decoded bytes of unpadded-base64",
+        "key_agreement_protocol": ["curve25519-hkdf-sha256"],
+        "hash": ["sha256"],
+        "message_authentication_code": ["hkdf-hmac-sha256.v2", "org.matrix.msc3783.hkdf-hmac-sha256"],
+        "short_authentication_string": "ordered-subset:decimal,emoji",
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "key": {
+      "outerType": "m.key.verification.key",
+      "required": {
+        "key": "unpadded-base64-public-ephemeral",
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "mac": {
+      "outerType": "m.key.verification.mac",
+      "required": {
+        "mac": "object-of-key-id-to-unpadded-base64-mac",
+        "keys": "unpadded-base64-mac",
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "done": {
+      "outerType": "m.key.verification.done",
+      "required": {
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    },
+    "cancel": {
+      "outerType": "m.key.verification.cancel",
+      "required": {
+        "code": ["m.user", "m.timeout", "m.unknown_transaction", "m.unknown_method", "m.unexpected_message", "m.key_mismatch", "m.user_mismatch", "m.invalid_message", "m.accepted", "m.mismatched_commitment", "m.mismatched_sas"],
+        "reason": "UTF-8 string 1..256 code units with no control characters",
+        "m.relates_to": "reference-relation"
+      },
+      "optional": {}
+    }
+  },
+  "sharedTypes": {
+    "reference-relation": {
+      "required": {
+        "rel_type": ["m.reference"],
+        "event_id": "matrix-event-id"
+      },
+      "optional": {},
+      "unknownFields": "reject"
+    },
+    "exact unsigned schema": {
+      "required": {},
+      "optional": {
+        "age": "nonnegative JavaScript safe integer",
+        "transaction_id": "bounded Matrix transaction ID"
+      },
+      "unknownFields": "reject"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+server_name: chat.localhost
+public_baseurl: https://matrix.localhost:8443/
+media_store_path: /data/media_store
+report_stats: false
+listeners:
+  - port: 8008
+    type: http
+    tls: false
+    bind_addresses: [0.0.0.0]
+    x_forwarded: true
+    resources:
+      - names: [client]
+matrix_authentication_service:
+  enabled: true
+  endpoint: http://mas:8080/
+  secret_path: /run/secrets/synapse-mas-shared-secret
+enable_registration: false
+allow_guest_access: false
+enable_set_password: false
+password_config:
+  enabled: false
+  localdb_enabled: false
+enable_3pid_lookup: false
+default_identity_server: null
+url_preview_enabled: false
+allow_public_rooms_without_auth: false
+allow_public_rooms_over_federation: false
+user_directory:
+  enabled: false
+app_service_config_files: []
+allow_profile_lookup_over_federation: false
+allow_device_name_lookup_over_federation: false
+trusted_key_servers: []
+encryption_enabled_by_default_for_room_type: invite
+room_list_publication_rules: []
+database:
+  name: psycopg2
+  args:
+    host: matrix-db
+    database: synapse
+    user: synapse

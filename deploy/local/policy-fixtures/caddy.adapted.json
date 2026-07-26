@@ -1,0 +1,398 @@
+{
+  "admin": {
+    "disabled": true
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": [
+            ":8443"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "group": "group0",
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "mas:8080"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/_matrix/client/*/login",
+                            "/_matrix/client/*/logout",
+                            "/_matrix/client/*/refresh",
+                            "/_matrix/client/*/register"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "group": "group0",
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "handler": "reverse_proxy",
+                                  "upstreams": [
+                                    {
+                                      "dial": "synapse:8008"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/_matrix/client/*",
+                            "/_matrix/media/*",
+                            "/_synapse/client/*"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "status_code": 404
+                        }
+                      ],
+                      "match": [
+                        {
+                          "path": [
+                            "/_matrix/federation/*",
+                            "/_matrix/key/*",
+                            "/_synapse/admin/*"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "handle": [
+                        {
+                          "handler": "static_response",
+                          "status_code": 404
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "matrix.localhost"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "subroute",
+                          "routes": [
+                            {
+                              "handle": [
+                                {
+                                  "body": "ok",
+                                  "handler": "static_response",
+                                  "status_code": 200
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "path": [
+                                    "/_gateway/health"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "group": "group1",
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Access-Control-Allow-Origin": [
+                                                "https://chat.localhost:8443"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Access-Control-Allow-Methods": [
+                                                "GET, OPTIONS"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Vary": [
+                                                "Origin"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "handler": "static_response",
+                                          "status_code": 204
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "method": [
+                                    "OPTIONS"
+                                  ],
+                                  "path": [
+                                    "/.well-known/matrix/client"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "group": "group1",
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "vars",
+                                          "root": "/srv/well-known"
+                                        },
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Access-Control-Allow-Origin": [
+                                                "https://chat.localhost:8443"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Vary": [
+                                                "Origin"
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "handler": "headers",
+                                          "response": {
+                                            "set": {
+                                              "Content-Type": [
+                                                "application/json"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "group": "group2",
+                                      "handle": [
+                                        {
+                                          "handler": "rewrite",
+                                          "uri": "/matrix-client.json"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "file_server",
+                                          "hide": [
+                                            "/etc/caddy/Caddyfile"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "path": [
+                                    "/.well-known/matrix/client"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "group": "group1",
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "reverse_proxy",
+                                          "upstreams": [
+                                            {
+                                              "dial": "api:8080"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ],
+                              "match": [
+                                {
+                                  "path": [
+                                    "/v1/*",
+                                    "/oidc/*",
+                                    "/health",
+                                    "/.well-known/oauth-authorization-server/oidc"
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "group": "group1",
+                              "handle": [
+                                {
+                                  "handler": "subroute",
+                                  "routes": [
+                                    {
+                                      "handle": [
+                                        {
+                                          "handler": "reverse_proxy",
+                                          "upstreams": [
+                                            {
+                                              "dial": "web:80"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "chat.localhost"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "upstreams": [
+                            {
+                              "dial": "mas:8080"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "auth.localhost"
+                  ]
+                }
+              ],
+              "terminal": true
+            }
+          ]
+        }
+      }
+    },
+    "tls": {
+      "automation": {
+        "policies": [
+          {
+            "issuers": [
+              {
+                "module": "internal"
+              }
+            ],
+            "subjects": [
+              "matrix.localhost",
+              "chat.localhost",
+              "auth.localhost"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

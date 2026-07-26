@@ -1,0 +1,21 @@
+services:
+  # Task 8 replaces only the upstream metadata/control-plane boundary.  The
+  # Matrix, MAS, gateway, and web services remain the locked production topology.
+  api:
+    image: ${CADDY_IMAGE:?}
+    build: !reset null
+    user: !reset null
+    command: !reset null
+    entrypoint: !reset null
+    environment: !reset null
+    secrets: !reset []
+    tmpfs: !reset []
+    volumes: !override
+      - ./browser/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: !override [control-internal]
+    depends_on: !reset {}
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O - http://127.0.0.1:8080/health | grep -qx "{\"status\":\"ok\"}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12

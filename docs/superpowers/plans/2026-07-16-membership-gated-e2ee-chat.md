@@ -69,7 +69,7 @@ Do not use “Signal-grade,” “Signal clone,” or “secure messenger” in 
 
 ### Infrastructure
 
-- `deploy/local/compose.yaml` — local Synapse, MAS, two PostgreSQL databases, control plane, and web services.
+- `deploy/local/compose.yaml` — local Synapse, MAS, an isolated control-plane PostgreSQL service, a Matrix PostgreSQL service with separate Synapse/MAS logical databases and roles, control plane, gateway, and web services.
 - `deploy/local/synapse/homeserver.yaml` — non-federating private homeserver policy.
 - `deploy/local/mas/config.yaml` — MAS with the control plane as upstream OIDC.
 - `deploy/local/well-known/matrix-client.json` — client discovery.
@@ -249,7 +249,7 @@ Do not store the DID in Matrix identifiers or OIDC `sub`; persist the encrypted 
 
 - [ ] **Step 4: Document protocol and lifecycle**
 
-Specify identity handoff, issuer credential issuance, P-256 WebCrypto key generation, RFC 7638 JWK thumbprint in `cnf.jkt`, challenge signing, replay prevention, issuer rotation, account recovery, entitlement expiry, and revocation. State that the credential body is verified in memory and never persisted.
+Specify DID Core constrained ATProto DID parsing, mandatory 60-second identity-handoff freshness, exact versioned HTTP schemas/statuses, P-256 WebCrypto key generation, RFC 7638 JWK thumbprint, challenge signing, keyed replay/idempotency fingerprints, issuer rotation, entitlement expiry, and revocation. State that credential bodies are verified only in memory and never persisted.
 
 - [ ] **Step 5: Verify**
 
@@ -273,30 +273,47 @@ Suggested checkpoint: `feat: define private membership entitlement contract`.
 
 - [ ] **Step 1: Write failing config and migration tests**
 
-Require HTTPS production URLs, 32-byte subject and cookie keys, pinned root DIDs, a pinned authority-policy version, maximum policy staleness, secure cookie mode, and exact OIDC/MAS redirect origins. Reject wildcard origins and default secrets outside test mode.
+Require separate runtime and migration database URLs; HTTPS production URLs; versioned exact 32-byte subject and AES-256-GCM key rings; 32-byte cookie key; dedicated versioned 32-byte challenge, session-binding, JTI, idempotency, and request-fingerprint HMAC key rings; pinned root DIDs; a pinned authority-policy version; maximum policy staleness; secure cookie mode; and exact OIDC/MAS redirect origins. Reject wildcard origins, URL credentials in public URLs, and default secrets outside test mode. Retain each fingerprint key ID through its contract-defined maximum row TTL, each subject key for the lifetime of referenced mappings, and each encryption key through the lifetime of referenced envelopes.
 
 - [ ] **Step 2: Define minimal tables**
 
-Use tables for encrypted DID mappings, one-time login states, one-time proof challenges, active entitlement status, issuer-policy snapshots, OIDC grants/consents required by the selected library, and append-only security audit events. Add expiry indexes and uniqueness on state/challenge/JTI hashes. Do not add message, room, device-key, attachment, roster, or credential-body columns.
+Use a dedicated `control_plane` schema for encrypted DID mappings, one-time login states, fingerprint-only identity sessions/proof challenges/JTIs/idempotency results and rotation aliases, active entitlement status, encrypted issuer-policy snapshots, the active-policy pointer, and append-only coarse security audit events. Add expiry indexes, exact constraints, and transactional uniqueness on every retained-key alias. v1 HMAC activation is outage/quiescence-only: writers stop, traffic is blocked, retention drains, and all instances restart on one new active epoch; rolling mixed epochs, online activation, and dual-write are prohibited. Defer all provider-specific OIDC grant/consent/token/adapter tables to a separate Task 6 migration after provider selection; do not add generic JSONB adapter blobs. Do not add raw state/challenge/JTI/idempotency/request bytes, plaintext DID/issuer/`kid`, message, room, device-key, attachment, roster, token, credential-body, or free-form audit columns. Migration-owner, runtime, and retention roles are distinct; runtime cannot own schema objects and has `INSERT`-only audit access. Runtime receives no migration-owner or retention credential and no direct delete/truncate privilege; retention receives no direct table privilege and can invoke only the expiry-guarded cleanup function.
 
 - [ ] **Step 3: Prove the privacy boundary in SQL tests**
 
-Query `information_schema.columns` and fail if a control-plane table contains `message`, `plaintext`, `room_state`, `matrix_token`, `credential_body`, `roster`, or `refresh_token`.
+Compare `information_schema.columns` bidirectionally against an exact positive allowlist of table, column, type, and nullability; any missing or extra column fails. Separately assert checks, foreign keys, unique constraints, indexes, and runtime grants through `pg_catalog`, including the absence of JSON/JSONB and generic payload/body/token/code/JWK/signature/DID columns.
 
 - [ ] **Step 4: Run integration tests and full verification**
 
 Run: `pnpm --filter '*api' test && make verify`
 
-Expected: migration applies twice safely in disposable PostgreSQL and every check passes.
+Expected: a migration ledger plus immutable checksum and advisory lock make a second identical application a no-op while schema drift fails closed; disposable-PostgreSQL catalog, constraint, role/grant, and privacy checks pass.
 
 Suggested checkpoint: `feat: add minimal identity control-plane storage`.
 
 ### Task 5: Implement identity handoff and holder-bound entitlement proof
 
 **Files:**
+- Modify: `.npmrc`
+- Modify: `.env.example`
+- Modify: `backend/package.json`
+- Modify: `pnpm-lock.yaml`
+- Modify: `backend/src/config.ts`
+- Modify: `backend/src/config.test.ts`
+- Modify: `backend/src/db.ts`
+- Modify: `backend/src/db.integration.test.ts`
+- Modify: `backend/src/migrate.ts`
+- Modify: `backend/scripts/copy-migration.mjs`
+- Modify: `backend/src/server.ts`
+- Modify: `backend/src/server.test.ts`
+- Modify: `backend/src/index.ts`
+- Create: `migrations/0003_entitlement_session_binding.sql`
+- Create: `backend/src/refresh-policy.ts`
 - Create: `backend/src/foundation/foundation-service.ts`
+- Create: `backend/src/http/strict-json.ts`
 - Create: `backend/src/identity/identity-handoff.ts`
 - Create: `backend/src/identity/identity-handoff.test.ts`
+- Create: `backend/src/identity/session-cookie.ts`
 - Create: `backend/src/entitlements/challenge-service.ts`
 - Create: `backend/src/entitlements/verify-entitlement.ts`
 - Create: `backend/src/entitlements/verify-entitlement.test.ts`
@@ -308,30 +325,36 @@ Suggested checkpoint: `feat: add minimal identity control-plane storage`.
 Run:
 
 ```bash
-pnpm --filter '*api' add @dsaslate/foundation-client@0.2.0 jose
+pnpm --filter '*api' add @dsaslate/foundation-client@0.2.0 jose@6.2.3 lossless-json@4.2.0
 ```
 
 Expected: lockfile records immutable package versions; no sibling link is present.
 
 - [ ] **Step 2: Write adversarial tests first**
 
-Test expired/wrong-audience credentials, unknown or rotated issuer keys, stale authority snapshots, live `dsa-proto` disagreement, reused JTI, reused/expired challenge, wrong origin, wrong P-256 signature, thumbprint mismatch, DID/subject mismatch, clock skew over 30 seconds, and database/log redaction.
+Test constrained DID parsing (including percent encoding), server-side handoff exchange and cookie establishment, handoff freshness boundaries, expired/wrong-audience credentials, unknown or rotated issuer keys, stale authority snapshots, live `dsa-proto` disagreement during refresh, reused JTI, reused/expired challenge, idempotency ordering/session conflict, exact HTTP status schemas and parsing precedence, wrong origin/signature/thumbprint/DID binding, and database/log redaction. Also test strict JOSE/nested schemas, exact token/body/`kid` caps, recursive duplicate JSON rejection, one captured clock, atomic policy transitions, DB uniqueness/concurrency, and exact log/APM exclusions.
 
 - [ ] **Step 3: Implement issuer-policy snapshots**
 
-Bootstrap from configured root DIDs and policy version. Resolve authority through `FoundationClient`, store provenance and a canonical digest, and activate snapshots only through an audited refresh operation. Authentication uses the active cached snapshot and fails closed after configured staleness; it never authorizes directly from one live response.
+Bootstrap through the operator-only `refresh-policy --file` command from configured root DIDs, exact root JWKs, and policy version. Resolve authority through `FoundationClient`, store the strict selected provenance plus SHA-256 of the exact compact-JWS UTF-8 bytes without canonicalization, and activate snapshots only through an audited refresh transaction. Authentication uses the active cached snapshot and fails closed after configured staleness; it never authorizes directly from one live response.
 
 - [ ] **Step 4: Implement one-time proof**
 
-Issue a random 32-byte challenge bound to browser session, expected JWK thumbprint, audience, and origin. Verify the credential with `jose`, import the P-256 public JWK, verify a signature over:
+Implement the versioned challenge and verification wire schemas, exact
+holder-proof transcript, atomic replay/idempotency behavior, and coarse errors
+in `docs/reference/identity-and-entitlement-contract.md`. Issue a random
+32-byte challenge bound to browser session, exact DID, expected JWK thumbprint,
+entitlement audience, and canonical allowlisted origin. Consume challenge and
+issuer-scoped JTI atomically with authorization and idempotency result commits.
+Persist only the contract's encrypted mapping references, coarse audit metadata,
+and versioned keyed replay/idempotency fingerprints; never raw credentials or
+replay inputs.
 
-```text
-dsa-signal-proof:v1\n<challenge>\n<origin>\n<credential-jti>
-```
+- [ ] **Step 5: Mount the exact HTTP adapters**
 
-Consume challenge and JTI atomically. Persist only issuer, pairwise subject, policy version, JTI hash, decision, timestamps, and reason code.
+Wire the identity-session, challenge, and verification routes through `server.ts` and `index.ts` with the contract's dependency injection, singleton-header precedence, raw-octet caps, duplicate-aware parsing, secure cookie behavior, headers, and coarse errors. Exercise the real HTTP adapters, not only service methods.
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 6: Verify**
 
 Run: `pnpm --filter '*api' test && make verify`
 
@@ -342,30 +365,52 @@ Suggested checkpoint: `feat: verify holder-bound membership entitlements`.
 ### Task 6: Provide a standards-compliant upstream OIDC boundary for MAS
 
 **Files:**
+- Create: `docs/reference/mas-upstream-oidc-contract.md`
+- Create: `docs/adr/0003-oidc-provider-for-mas.md`
+- Modify: `docs/reference/identity-and-entitlement-contract.md`
+- Modify: `.env.example`, `docker-compose.yml`, `backend/package.json`, and `pnpm-lock.yaml`
 - Create: `backend/src/oidc/provider.ts`
 - Create: `backend/src/oidc/provider.test.ts`
+- Create: `backend/src/oidc/adapter.ts`
+- Create: `backend/src/oidc/adapter.test.ts`
+- Create: `backend/src/oidc/authorization-decision.ts`
+- Create: `backend/src/oidc/authorization-decision.test.ts`
+- Modify: `backend/src/entitlements/verify-entitlement.ts` and `backend/src/entitlements/verify-entitlement.test.ts`
+- Modify: `backend/src/refresh-policy.ts` and `backend/src/refresh-policy.test.ts`
 - Create: `backend/src/routes/auth.ts`
 - Create: `backend/src/routes/oidc.ts`
 - Refactor: `backend/src/server.ts`
 - Modify: `backend/src/index.ts`
+- Modify: `backend/src/config.ts`, `backend/src/config.test.ts`, `backend/src/db.ts`, `backend/src/db.integration.test.ts`, `backend/src/migrate.ts`, and `backend/scripts/copy-migration.mjs`
+- Create: `migrations/0004_mas_upstream_oidc.sql`
+- Create: `migrations/catalog/0003-pre.json`, `migrations/catalog/0004-post.json`, and catalog/ACL fixture tests
+- Create: `backend/src/oidc/compatibility-harness.test.ts`
+- Create: `backend/src/oidc/fixtures/openid-configuration.http` and `backend/src/oidc/fixtures/oauth-authorization-server.http`
+- Create: `docs/runbooks/oidc-restore.md`
 
-- [ ] **Step 1: Select and lock the maintained OpenID Provider package**
+- [x] **Step 1: Pin the compatibility spike before implementation**
 
-Record the package, version, Node 24 support, security policy, discovery metadata, PKCE support, pairwise-subject support, persistence adapter, and conformance status in the ADR. Add it with `pnpm`; do not implement authorization, token, discovery, JWKS, refresh, or revocation endpoints manually.
+Add exact ESM `oidc-provider@9.9.1` for Node 24 and build a pinned compatibility harness around public provider middleware, adapter, `findAccount`, `interactionResult`, and application-owned AsyncLocalStorage. It must prove mounted `/token`, the exact 43-character authorization-resume UID grammar and narrow resume-cookie path, exact five-model persisted adapter allowlist plus non-persisting `Client` lookup and `findByUid` scope, exact payload shape, both OAuth metadata routes and their full provider-owned fixtures, external/disabled route response matrix, exact ID-token claim set, provider handled-error buffering/commit behavior, transaction ordering/savepoint behavior, and selected APIs. It must prove `interactionFinished` is not used because it writes before commit. Record the OpenID Certified package choice, upgrade harness requirement, and external OpenID Foundation conformance pre-G2 gate in ADR 0003. Never handwrite discovery, authorization, token, JWKS, or other provider protocol endpoints.
 
-- [ ] **Step 2: Write protocol-boundary tests**
+- [x] **Step 2: Write protocol-boundary tests**
 
-Test discovery, exact redirect URI, authorization-code flow with S256 PKCE, `state` and `nonce`, pairwise `sub`, `aud` restricted to MAS, short authorization/session lifetime, key rotation, logout, entitlement lapse, consent reuse, and absence of Matrix tokens at every Node route.
+Test exact discovery fixture acceptance and external route allowlist; static-client runtime code/query restriction, redirect, scopes, and RS256; authorization-code query mode with mandatory S256 PKCE, state, and nonce; Strict-cookie first GET and same-origin one-time CSRF POST; exact session-bound entitlement, generation, and policy snapshot; pairwise subject/minimal claims; fresh Grant per authorization and second-cookie authorization nonreuse; context-to-code binding; double exchange; expiry/revocation races; complete savepoint/commit matrix including signing/rendering/storage failure; product logout; key/epoch/restore/cleanup; encrypted payload canary scan; runtime role; frozen migration catalog/ACL manifests; no Matrix-token routes; signing overlap; and conformance smoke.
 
-- [ ] **Step 3: Configure the provider**
+- [x] **Step 3: Configure the provider**
 
-Expose only scopes `openid` and `dsa_signal_entitlement`. Claims are `sub`, `iss`, `aud`, `iat`, `exp`, and an entitlement policy version; omit DID, chapter, profile, email, roster, and credential contents. Disable implicit, password, device-code, dynamic client registration, wildcard redirects, and unneeded grants.
+Implement the normative MAS upstream OIDC contract exactly: derive issuer only as `${PWA_ORIGIN}/oidc`, remove legacy issuer/plural-redirect inputs, configure one confidential MAS client and one exact redirect, runtime code/query/PKCE-S256/state/nonce/scopes, RS256, minimal ID token, opaque 256-bit upstream-only access token, exact 60/300/900-second TTL bounds, and all disabled surfaces. Make migration 0004 outage-only: preserve the existing policy-snapshot FK, replace drained legacy entitlement uniqueness with one session-bound durable entitlement row and positive generation, then create encrypted adapter rows, artifact epoch, versioned catalog/ACL manifests, and retention controls with no forbidden plaintext columns. Use dedicated non-reused key rings and descriptor-read owner-only signing/secret files.
 
-- [ ] **Step 4: Run an OIDC conformance smoke suite**
+- [x] **Step 4: Implement interaction, decision, adapter, and atomic token exchange**
 
-Run the selected provider’s official conformance tests plus `pnpm --filter '*api' test`.
+Use `/oidc/interaction` GET/POST with fixed CSP/no-store/no-referrer HTML and exact one-time HMAC CSRF binding; initial GET cannot bind the absent Strict control cookie and local interaction failures never use the product JSON envelope. Recheck the control session and entitlement, create one fresh Grant and the exact login/custom-prompt/consent result, and finish fixed login/consent. `loadExistingGrant` accepts only that current consent result. Atomically bind interaction/session/Grant context to AuthorizationCode. Application-owned ALS wraps all provider and interaction routes; every adapter mutation uses its checked-out client. POST, resolved resume, token exchange, and logout acquire the common session-binding advisory lock and row locks in the contract order: session, entitlement, policy, context, artifact/code, CSRF. Savepoint immediately after consume, roll back late writes while retaining consume, commit reuse `revokeByGrantId`, buffer every transactional response until commit, and poison indeterminate-commit connections without emitting buffered output. Product logout uses its exact v1 JSON transport and revokes control session, contexts, and provider artifacts by Grant fingerprint without receiving Matrix credentials.
 
-Expected: authorization-code + PKCE passes; disabled grants fail; revocation terminates new authorization. Security review is mandatory.
+- [ ] **Step 5: Run local evidence and external conformance**
+
+Run `pnpm --filter '*api' test` and the local conformance smoke suite. Before G2, run the official OpenID Foundation conformance suite as an external gate; do not represent it as a local package test.
+
+Local evidence recorded 2026-07-20: API suite 386/386, local OIDC compatibility smoke 18/18, and `make verify` passed. The checkbox remains open solely for the official external OpenID Foundation conformance gate.
+
+Expected: only the contract surface is externally reachable; authorization-code + PKCE succeeds; disabled grants fail; fresh Grants prevent reuse ambiguity; revocation/lapse terminates new authorization and exchange; and no Node route accepts Matrix credentials. Security, data, API, and operations review are mandatory.
 
 Suggested checkpoint: `feat: expose MAS upstream OIDC identity`.
 
@@ -379,33 +424,41 @@ Suggested checkpoint: `feat: expose MAS upstream OIDC identity`.
 - Create: `deploy/local/compose.yaml`
 - Create: `deploy/local/synapse/homeserver.yaml`
 - Create: `deploy/local/mas/config.yaml`
+- Create: `deploy/local/gateway/Caddyfile`
+- Create: `deploy/local/postgres/init-matrix-databases.sh`
 - Create: `deploy/local/well-known/matrix-client.json`
+- Create: `deploy/locks/images.provenance.json`
+- Create: `scripts/generate-matrix-local-secrets.mjs`
+- Create: `scripts/test-matrix-negative.mjs`
 - Create: `docs/runbooks/matrix-local.md`
 - Modify: `Makefile`
 
-- [ ] **Step 1: Write a configuration policy checker**
+- [x] **Step 1: Write a configuration policy checker**
 
-Create `scripts/check-matrix-policy.mjs` that parses rendered configuration and fails unless federation listeners, guests, public room directory, URL previews, bridges, legacy password login, open registration, remote media, and identity-server lookup are disabled; encrypted private rooms are the only application-created room type.
+Create `scripts/check-matrix-policy.mjs` that parses rendered configuration and fails unless federation listeners, guests, public room directory, URL previews, bridges, legacy password login, open registration, remote media, and identity-server lookup are disabled. Task 7 proves the server prerequisites: invite rooms default to encryption and public room discovery/publication is disabled. Task 8 enforces that the application creates and joins only encrypted private rooms; Task 9 supplies end-to-end proof.
 
-- [ ] **Step 2: Resolve real image digests**
+- [x] **Step 2: Resolve real image digests**
 
 The resolver must call `docker buildx imagetools inspect <approved-tag>`, extract the Linux/amd64 and Linux/arm64 manifest digests, and atomically write `NAME=image@sha256:<resolved-digest>` entries. Review release notes and signatures before committing the resulting lock file. Compose references only variables from `deploy/locks/images.env`.
 
-- [ ] **Step 3: Configure MAS delegation**
+- [x] **Step 3: Configure MAS delegation**
 
 MAS uses the control plane’s OIDC discovery and exact client credentials. The browser authenticates directly with MAS; neither callback nor reverse proxy routes Matrix tokens through Node. Synapse delegates auth to MAS and disables legacy login.
 
-- [ ] **Step 4: Validate topology**
+- [x] **Step 4: Validate topology**
 
 Run:
 
 ```bash
 node scripts/check-matrix-policy.mjs
-docker compose --env-file deploy/locks/images.env -f deploy/local/compose.yaml config --quiet
+docker compose --env-file deploy/locks/images.env --env-file deploy/local/policy.env -f deploy/local/compose.yaml --profile full --profile negative config --quiet
+make matrix-negative
 make verify
 ```
 
-Expected: all pass. Network tests must show federation, guest login, public directory, URL preview, and password login fail closed.
+Expected: all pass. Network tests must show federation, guest login, public directory, URL preview, and password login fail closed, and must prove transport isolation: Synapse cannot reach an isolated egress canary. This is not direct federation or remote-media application-path execution evidence.
+
+Local evidence recorded 2026-07-21: the rendered policy and dual-profile Compose checks passed, `make verify` passed, and two consecutive clean `make matrix-negative` rehearsals passed after one non-reproduced Synapse startup exit. The repository operator approved the recorded PostgreSQL `17.10-bookworm` and Caddy `2.11.4-alpine` Docker Official Image provenance exceptions via OpenCode session on 2026-07-21; future digest updates require fresh approval. Task 7 is locally complete. Task 6 Step 5 remains postponed solely for its separate external OpenID Foundation conformance gate.
 
 Suggested checkpoint: `infra: add private Matrix authentication topology`.
 
@@ -421,41 +474,48 @@ Suggested checkpoint: `infra: add private Matrix authentication topology`.
 - Create: `web/src/crypto/bootstrap-crypto.test.ts`
 - Refactor: `web/src/App.tsx`
 
-- [ ] **Step 1: Add and lock `matrix-js-sdk`**
+- [x] **Step 1: Add and lock `matrix-js-sdk`**
 
 Run: `pnpm --filter '*web' add matrix-js-sdk`
 
 Expected: the lockfile includes the supported Rust/WASM crypto path. Legacy `initCrypto`, `initLegacyCrypto`, and direct `@matrix-org/olm` imports are forbidden by lint.
 
-- [ ] **Step 2: Write failing client-policy tests**
+- [x] **Step 2: Write failing client-policy tests**
 
 Prove crypto initializes before sync, IndexedDB uses one owner per profile, a second tab coordinates instead of opening a conflicting crypto machine, unencrypted rooms are rejected, unverified-device state is visible, and browser storage failure blocks sending rather than silently using ephemeral keys.
 
-- [ ] **Step 3: Implement OAuth and crypto startup order**
+- [x] **Step 3: Implement OAuth and crypto startup order**
 
 Discover MAS with Matrix auth metadata, use authorization code + PKCE, return directly to the PWA, create the Matrix client, call `initRustCrypto()`, register crypto callbacks, then begin sync. Never place access or refresh tokens in `localStorage`, URLs, logs, analytics, error reports, or the Node service.
 
-- [ ] **Step 4: Enforce room encryption**
+- [x] **Step 4: Enforce room encryption**
 
 The application may create/join only invite-only rooms with `m.room.encryption` using the supported Matrix encryption algorithm. Sending is disabled until encryption state is observed and device trust has been evaluated.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run: `pnpm --filter '*web' test && make verify`
 
 Expected: all tests pass and a source search finds no legacy crypto API.
 
+Local evidence recorded 2026-07-22: `matrix-js-sdk@42.0.0` is exactly locked; SDK import quarantine, IndexedDB session storage, Web Lock ownership, Rust crypto startup, owner-safe refresh/logout, and invite-only Megolm room admission tests pass. `make verify` passes. The fixture-owned production-Caddy Chromium gate passes as `PASS_LOCAL_CALLBACK_PENDING_LIVE_LOGIN` and records strict secret-free evidence for callback scrubbing, live metadata/CORS/DCR, owner page-close takeover, reload/store identity continuity, and IndexedDB failure handling. The upstream-entitled callback remains explicitly `pending-pre-g2-live-login` for Task 9 and is not represented as a local pass.
+
 Suggested checkpoint: `feat: bootstrap Matrix Rust crypto in PWA`.
 
 ### Task 9: Prove the verified encrypted 1:1 vertical slice
+
+**Detailed plan:** `docs/superpowers/plans/2026-07-22-verified-encrypted-direct-chat.md`
 
 **Files:**
 - Create: `web/src/features/conversations/create-direct-room.ts`
 - Create: `web/src/features/conversations/ConversationView.tsx`
 - Create: `web/src/features/messages/send-text.ts`
 - Create: `web/src/features/devices/VerificationFlow.tsx`
-- Create: `tests/e2e/encrypted-vertical-slice.spec.ts`
-- Create: `tests/security/no-plaintext-storage.test.ts`
+- Create: `web/e2e/encrypted-vertical-slice.spec.ts`
+- Create: `web/test/no-plaintext-storage.test.ts`
+- Refactor: `web/src/matrix/contract.ts`
+- Refactor: `web/src/matrix/encryption-policy.ts`
+- Refactor: `web/src/matrix/internal/sdk.ts`
 
 - [ ] **Step 1: Write the failing browser test**
 
@@ -463,17 +523,23 @@ The test provisions two eligible accounts and two browsers, completes emoji/SAS 
 
 - [ ] **Step 2: Add ciphertext-only assertions**
 
-After sending, search Synapse and control-plane PostgreSQL text columns, captured service logs, rendered Matrix event JSON, and media storage for the canary. The recipient UI must contain it; every server-side search must return zero matches. Assert the event type is encrypted and no `m.room.message` plaintext reaches the homeserver API capture.
+After sending, search Synapse and control-plane PostgreSQL text columns, captured service logs, rendered Matrix event JSON, and media storage for the canary. The recipient UI must contain it; every server-side search must return zero matches. Assert each application chat event reaches the homeserver as `m.room.encrypted`, never as plaintext `m.room.message`. Exact SDK-v42 verification-control schemas are the sole approved server-visible exception: the initial request may use the standard outer `m.room.message`, and later events may contain protocol-mandated public ephemeral keys/commitments/hashes/MACs, but none may contain the chat canary, derived SAS values, private/secret keys, or nonstandard application content.
 
-- [ ] **Step 3: Implement minimal direct chat**
+- [x] **Step 3: Implement minimal direct chat**
 
 Support conversation list, verified peer identity, text compose/send, ordered timeline, delivery/error state, and explicit warnings for new or unverified devices. Do not add groups, media, reactions, or calls in this gate.
 
-- [ ] **Step 4: Run G2**
+- [ ] **Step 4: Run local verification, then external G2**
 
-Run: `pnpm test && pnpm exec playwright test tests/e2e/encrypted-vertical-slice.spec.ts && make verify`
+Local run: `pnpm test && make verify`
+
+Expected local verdict before eligible identities are supplied: `PASS_LOCAL_TASK9_PENDING_G2` plus `PENDING_EXTERNAL_G2_MISSING_TWO_ENTITLED_ACCOUNTS`. This does not check Steps 1–2 or G2.
+
+External run: `make g2-encrypted-direct-chat` against the approved fresh two-account environment, then run `make verify`.
 
 Expected: all pass in a fresh stack and after browser restart. Security review must inspect captured traffic and database/log queries.
+
+Local evidence recorded 2026-07-22: the exact one-peer SDK boundary, cross-signing/SAS state machine, plaintext-free IndexedDB v3 outbox, encrypted timeline/send/retry path, complete room/peer/epoch UI isolation, eight-event verification classifier, bounded positive-control scanner, and fail-closed external G2 skeleton are implemented. `make task9-local` emits `PASS_LOCAL_TASK9_PENDING_G2`; 211 web tests, lint/build, `make verify`, and `git diff --check` pass. Oracle and Designer accepted the local implementation. Steps 1–2 and external G2 remain unchecked because two distinct entitled accounts and the fresh/restart live evidence are not available.
 
 Suggested checkpoint: `feat: prove verified encrypted direct messaging`.
 

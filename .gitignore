@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+secrets/
 *.pem
 *.key
 *.crt
@@ -14,6 +15,7 @@ id_ed25519
 .open-pilot/
 .opencode/
 opencode-data/
+.blacktower/deepwork/
 
 # OS / editors
 .DS_Store
@@ -32,6 +34,8 @@ logs/
 data/
 tmp/
 .cache/
+deploy/locks/*.lock
+deploy/locks/*.tmp
 
 # Node / TypeScript / React / Vite / Tailwind
 node_modules/
@@ -44,6 +48,8 @@ coverage/
 *.tsbuildinfo
 vite.config.*.timestamp-*
 vite.config.*.mjs
+web/.matrix-browser-harness/
+web/test-results/
 
 # Python
 __pycache__/

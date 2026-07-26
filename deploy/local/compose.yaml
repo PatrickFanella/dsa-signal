@@ -1,0 +1,197 @@
+services:
+  control-db:
+    image: ${POSTGRES_IMAGE:?}
+    profiles: [full]
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-control}"
+      POSTGRES_USER: "${POSTGRES_USER:-control_owner}"
+      POSTGRES_PASSWORD_FILE: /run/secrets/control-owner-db-password
+      CONTROL_PLANE_RUNTIME_ROLE: "${CONTROL_PLANE_RUNTIME_ROLE:-control_runtime}"
+      CONTROL_PLANE_RETENTION_ROLE: "${CONTROL_PLANE_RETENTION_ROLE:-control_retention}"
+      CONTROL_PLANE_REVOCATION_ROLE: "${CONTROL_PLANE_REVOCATION_ROLE:-control_revocation}"
+    command: [postgres, -c, max_connections=100]
+    volumes: [control-db-data:/var/lib/postgresql/data, ./postgres/init-control-plane.sh:/docker-entrypoint-initdb.d/10-control.sh:ro]
+    secrets: [control-owner-db-password, control-runtime-db-password, control-retention-db-password, control-revocation-db-password]
+    networks: [control-internal]
+    healthcheck: { test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'], interval: 5s, timeout: 5s, retries: 12 }
+  matrix-db:
+    image: ${POSTGRES_IMAGE:?}
+    profiles: [full, negative]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/matrix-root-password
+    command: [postgres, -c, max_connections=100]
+    volumes: [matrix-db-data:/var/lib/postgresql/data, ./postgres/init-matrix-databases.sh:/docker-entrypoint-initdb.d/10-matrix.sh:ro]
+    secrets: [matrix-root-password, synapse-db-password, mas-db-password]
+    networks: [matrix-internal]
+    healthcheck: { test: [CMD-SHELL, pg_isready -U postgres], interval: 5s, timeout: 5s, retries: 12 }
+  migrate:
+    build: { context: ../.., dockerfile: backend/Dockerfile, args: { NODE_IMAGE: "${NODE_IMAGE:?}", BUILD_MARKER: "${VITE_BUILD_MARKER:-development}" } }
+    profiles: [full]
+    user: root
+    command: [sh, -ec, 'p=$$(cat /run/secrets/control-owner-db-password); export MIGRATION_DATABASE_URL="postgresql://$${POSTGRES_USER:-control_owner}:$$p@control-db/$${POSTGRES_DB:-control}"; exec node dist/migrate.js']
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-control_owner}"
+      POSTGRES_DB: "${POSTGRES_DB:-control}"
+      CONTROL_PLANE_RUNTIME_ROLE: "${CONTROL_PLANE_RUNTIME_ROLE:-control_runtime}"
+      CONTROL_PLANE_RETENTION_ROLE: "${CONTROL_PLANE_RETENTION_ROLE:-control_retention}"
+      CONTROL_PLANE_REVOCATION_ROLE: "${CONTROL_PLANE_REVOCATION_ROLE:-control_revocation}"
+      REVOCATION_EVIDENCE_KEY_IDS: "${REVOCATION_EVIDENCE_KEY_IDS:-v1}"
+    secrets: [control-owner-db-password]
+    networks: [control-internal]
+    depends_on: { control-db: { condition: service_healthy } }
+  api:
+    build: { context: ../.., dockerfile: backend/Dockerfile, args: { NODE_IMAGE: "${NODE_IMAGE:?}", BUILD_MARKER: "${VITE_BUILD_MARKER:-development}" } }
+    profiles: [full]
+    user: root
+    command: [sh, /usr/local/bin/local-api-entrypoint.sh]
+    environment:
+      APP_ENV: "${APP_ENV:-development}"
+      PORT: 8080
+      CONTROL_PLANE_RUNTIME_ROLE: "${CONTROL_PLANE_RUNTIME_ROLE:-control_runtime}"
+      CONTROL_PLANE_RETENTION_ROLE: "${CONTROL_PLANE_RETENTION_ROLE:-control_retention}"
+      CONTROL_PLANE_REVOCATION_ROLE: "${CONTROL_PLANE_REVOCATION_ROLE:-control_revocation}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-https://chat.localhost:8443}"
+      FOUNDATION_BASE_URL: "${FOUNDATION_BASE_URL:-https://foundation.example}"
+      PWA_ORIGIN: "${PWA_ORIGIN:-https://chat.localhost:8443}"
+      OIDC_SECTOR: "${OIDC_SECTOR:-https://auth.localhost:8443}"
+      OIDC_EPOCH: "${OIDC_EPOCH:-AAAAAAAAAAAAAAAAAAAAAA}"
+      OIDC_TRUSTED_PROXY_ADDRESS: "${GATEWAY_CONTROL_ADDRESS:-10.77.31.10}"
+      MAS_CLIENT_ID: dsa-signal
+      MAS_REDIRECT_URI: https://auth.localhost:8443/upstream/callback/01J00000000000000000000000
+      OIDC_SIGNING_JWKS_PATH: /run/private-oidc/oidc-signing-jwks.json
+      MAS_CLIENT_SECRET_PATH: /run/private-oidc/mas-client-secret
+      OIDC_COOKIE_KEYS_PATH: /run/private-oidc/oidc-cookie-keys.json
+      OIDC_RESTORE_FLOOR_DIR: /var/lib/dsa-signal/oidc-restore-floor
+      OIDC_RESTORE_FLOOR_HEAD: "${OIDC_RESTORE_FLOOR_HEAD:-replace}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-true}"
+      COOKIE_KEY: "${COOKIE_KEY:-replace}"
+      SUBJECT_KEY_RING: "${SUBJECT_KEY_RING:-replace}"
+      ENVELOPE_KEY_RING: "${ENVELOPE_KEY_RING:-replace}"
+      CHALLENGE_KEY_RING: "${CHALLENGE_KEY_RING:-replace}"
+      SESSION_BINDING_KEY_RING: "${SESSION_BINDING_KEY_RING:-replace}"
+      JTI_KEY_RING: "${JTI_KEY_RING:-replace}"
+      IDEMPOTENCY_KEY_RING: "${IDEMPOTENCY_KEY_RING:-replace}"
+      REQUEST_FINGERPRINT_KEY_RING: "${REQUEST_FINGERPRINT_KEY_RING:-replace}"
+      OIDC_ADAPTER_KEY_RING: "${OIDC_ADAPTER_KEY_RING:-replace}"
+      OIDC_INDEX_KEY_RING: "${OIDC_INDEX_KEY_RING:-replace}"
+      REVOCATION_EVIDENCE_KEY_RING: "${REVOCATION_EVIDENCE_KEY_RING:-replace}"
+      ROOT_DIDS: "${ROOT_DIDS:-did:example:root}"
+      ROOT_PUBLIC_JWKS: '${ROOT_PUBLIC_JWKS:-{"did:example:root#root":{"kty":"OKP","crv":"Ed25519","x":"replace"}}}'
+      AUTHORITY_POLICY_VERSION: "${AUTHORITY_POLICY_VERSION:-v1}"
+      POLICY_MAX_STALENESS_SECONDS: "${POLICY_MAX_STALENESS_SECONDS:-300}"
+    secrets:
+      - control-runtime-db-password
+      - source: oidc-signing-jwks
+        target: oidc-signing-jwks.json
+      - source: mas-upstream-client-secret
+        target: mas-client-secret
+      - source: oidc-cookie-keys
+        target: oidc-cookie-keys.json
+    volumes: ['./api-entrypoint.sh:/usr/local/bin/local-api-entrypoint.sh:ro', '${OIDC_RESTORE_FLOOR_DIR:-../../secrets/oidc-restore-floor}:/var/lib/dsa-signal/oidc-restore-floor:ro']
+    tmpfs: [/run/private-oidc:mode=0700, /run/private-oidc-restore-floor:mode=0700]
+    networks: [control-internal, control-egress]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e 'fetch("http://127.0.0.1:8080/health").then(async r => { if (!r.ok || (await r.json()).status !== "ok") process.exit(1) }).catch(() => process.exit(1))'
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    depends_on: { migrate: { condition: service_completed_successfully } }
+  web:
+    build: { context: ../.., dockerfile: web/Dockerfile, args: { NODE_IMAGE: "${NODE_IMAGE:?}", NGINX_IMAGE: "${NGINX_IMAGE:?}", BUILD_MARKER: "${VITE_BUILD_MARKER:-development}", VITE_BUILD_MARKER: "${VITE_BUILD_MARKER:-development}" } }
+    profiles: [full]
+    networks: [control-internal]
+    depends_on: { mas-ready: { condition: service_completed_successfully } }
+  synapse:
+    image: ${SYNAPSE_IMAGE:?}
+    profiles: [full, negative]
+    command: [run, -c, /data/homeserver.yaml, -c, /run/secrets/synapse-secrets.yaml]
+    volumes: [synapse-data:/data, ./synapse/homeserver.yaml:/data/homeserver.yaml:ro]
+    secrets: [synapse-secrets.yaml, synapse-mas-shared-secret, synapse-signing-key]
+    networks: [matrix-internal]
+    depends_on: { matrix-db: { condition: service_healthy }, synapse-data-init: { condition: service_completed_successfully } }
+    healthcheck: { test: [CMD-SHELL, 'curl -fSs http://127.0.0.1:8008/health >/dev/null'], interval: 5s, timeout: 5s, retries: 12 }
+  synapse-data-init:
+    image: ${SYNAPSE_IMAGE:?}
+    profiles: [full, negative]
+    entrypoint: [sh, -ec]
+    command: ['mkdir -p /data/media_store; chown -R 991:991 /data; chmod 0700 /data']
+    volumes: [synapse-data:/data]
+    network_mode: none
+  mas:
+    image: ${MAS_IMAGE:?}
+    profiles: [full]
+    command: [server, --no-migrate]
+    environment: { MAS_CONFIG: /config/config.yaml:/run/secrets/mas-secrets.yaml, SSL_CERT_FILE: /caddy-ca/root.crt }
+    volumes: [./mas/config.yaml:/config/config.yaml:ro, caddy-ca:/caddy-ca:ro]
+    secrets: [mas-secrets.yaml, mas-upstream-client-secret, synapse-mas-shared-secret, mas-encryption-key, mas-signing-key.pem]
+    networks: [matrix-internal]
+    depends_on: { mas-migrate: { condition: service_completed_successfully }, api: { condition: service_healthy }, synapse: { condition: service_healthy }, gateway-ca-export: { condition: service_completed_successfully } }
+  mas-ready:
+    image: ${CADDY_IMAGE:?}
+    profiles: [full]
+    entrypoint: [sh, -ec]
+    command: ['deadline=$$(($$(date +%s) + 60)); until wget -q -T 2 -O /dev/null http://mas:8081/health; do [ "$$(date +%s)" -lt "$$deadline" ] || exit 1; sleep 1; done']
+    networks: [matrix-internal]
+    depends_on: { mas: { condition: service_started } }
+  mas-migrate:
+    image: ${MAS_IMAGE:?}
+    profiles: [full]
+    command: [database, migrate]
+    environment: { MAS_CONFIG: /config/config.yaml:/run/secrets/mas-secrets.yaml }
+    volumes: [./mas/config.yaml:/config/config.yaml:ro]
+    secrets: [mas-secrets.yaml, synapse-mas-shared-secret, mas-encryption-key, mas-signing-key.pem, mas-upstream-client-secret]
+    networks: [matrix-internal]
+    depends_on: { matrix-db: { condition: service_healthy } }
+  gateway:
+    image: ${CADDY_IMAGE:?}
+    profiles: [full, negative]
+    ports: ['127.0.0.1:${MATRIX_HTTPS_PORT:-8443}:8443']
+    volumes: [./gateway/Caddyfile:/etc/caddy/Caddyfile:ro, ./well-known:/srv/well-known:ro, caddy-data:/data, caddy-config:/config]
+    networks:
+      matrix-internal: { ipv4_address: "${GATEWAY_MATRIX_ADDRESS:-10.77.30.10}", aliases: [chat.localhost, auth.localhost, matrix.localhost] }
+      control-internal: { ipv4_address: "${GATEWAY_CONTROL_ADDRESS:-10.77.31.10}" }
+      edge: {}
+    healthcheck: { test: [CMD-SHELL, 'test -r /data/caddy/pki/authorities/local/root.crt && test "$$(wget -q --no-check-certificate -O - https://chat.localhost:8443/_gateway/health)" = ok && wget -q --no-check-certificate -O /dev/null https://chat.localhost:8443/.well-known/matrix/client'], interval: 5s, timeout: 5s, retries: 12 }
+  gateway-ca-export:
+    image: ${CADDY_IMAGE:?}
+    profiles: [full]
+    entrypoint: [sh, -ec]
+    command: ['find /caddy-ca -mindepth 1 -maxdepth 1 -exec rm -rf {} +; install -m 0444 /data/caddy/pki/authorities/local/root.crt /caddy-ca/root.crt']
+    volumes: [caddy-data:/data:ro, caddy-ca:/caddy-ca]
+    network_mode: none
+    depends_on: { gateway: { condition: service_healthy } }
+  egress-canary:
+    image: ${CADDY_IMAGE:?}
+    profiles: [negative]
+    volumes: [./canary/Caddyfile:/etc/caddy/Caddyfile:ro]
+    networks:
+      canary: { ipv4_address: "${CANARY_ADDRESS:-10.77.32.10}" }
+
+volumes: { control-db-data: {}, matrix-db-data: {}, synapse-data: {}, caddy-data: {}, caddy-config: {}, caddy-ca: {} }
+networks:
+  control-internal: { internal: true, ipam: { config: [{ subnet: "${CONTROL_INTERNAL_SUBNET:-10.77.31.0/24}", gateway: "${CONTROL_INTERNAL_GATEWAY:-10.77.31.1}" }] } }
+  matrix-internal: { internal: true, ipam: { config: [{ subnet: "${MATRIX_INTERNAL_SUBNET:-10.77.30.0/24}", gateway: "${MATRIX_INTERNAL_GATEWAY:-10.77.30.1}" }] } }
+  control-egress: {}
+  edge: {}
+  canary: { internal: true, ipam: { config: [{ subnet: "${CANARY_SUBNET:-10.77.32.0/24}", gateway: "${CANARY_GATEWAY:-10.77.32.1}" }] } }
+secrets:
+  control-owner-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/control-owner-db-password' }
+  control-runtime-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/control-runtime-db-password' }
+  control-retention-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/control-retention-db-password' }
+  control-revocation-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/control-revocation-db-password' }
+  matrix-root-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/matrix-root-password' }
+  synapse-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/synapse-db-password' }
+  mas-db-password: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/mas-db-password' }
+  synapse-secrets.yaml: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/synapse-secrets.yaml' }
+  mas-secrets.yaml: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/mas-secrets.yaml' }
+  synapse-mas-shared-secret: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/synapse-mas-shared-secret' }
+  synapse-signing-key: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/synapse-signing-key' }
+  mas-encryption-key: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/mas-encryption-key' }
+  mas-signing-key.pem: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/mas-signing-key.pem' }
+  mas-upstream-client-secret: { file: '${MATRIX_LOCAL_SECRETS_DIR:-../../secrets/matrix-local}/mas-upstream-client-secret' }
+  oidc-signing-jwks: { file: '${OIDC_SIGNING_JWKS_SOURCE:-../../secrets/oidc-signing-jwks.json}' }
+  oidc-cookie-keys: { file: '${OIDC_COOKIE_KEYS_SOURCE:-../../secrets/oidc-cookie-keys.json}' }

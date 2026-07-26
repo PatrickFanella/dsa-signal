@@ -1,0 +1,41 @@
+http:
+  public_base: https://auth.localhost:8443/
+  listeners:
+    - name: web
+      resources: [{name: discovery}, {name: human}, {name: oauth}, {name: compat}, {name: graphql}, {name: assets}]
+      binds: [{host: 0.0.0.0, port: 8080}]
+    - name: health
+      resources: [{name: health}]
+      binds: [{host: 0.0.0.0, port: 8081}]
+database:
+  uri: postgresql://mas@matrix-db/mas?sslmode=disable
+matrix:
+  kind: synapse
+  homeserver: chat.localhost
+  endpoint: http://synapse:8008
+  secret_file: /run/secrets/synapse-mas-shared-secret
+account:
+  enabled: false
+  password_registration_enabled: false
+  password_change_allowed: false
+  password_recovery_enabled: false
+passwords:
+  enabled: false
+secrets:
+  encryption_file: /run/secrets/mas-encryption-key
+  keys: [{key_file: /run/secrets/mas-signing-key.pem}]
+upstream_oauth2:
+  providers:
+    - id: 01J00000000000000000000000
+      issuer: https://chat.localhost:8443/oidc
+      client_id: dsa-signal
+      client_secret_file: /run/secrets/mas-upstream-client-secret
+      discovery_mode: oidc
+      token_endpoint_auth_method: client_secret_basic
+      scope: "openid dsa_signal_entitlement"
+      pkce_method: always
+      claims_imports:
+        subject: {template: "{{ user.sub }}"}
+        localpart: {action: ignore}
+        displayname: {action: ignore}
+        email: {action: ignore}

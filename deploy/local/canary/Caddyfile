@@ -1,0 +1,7 @@
+:8080 {
+	log {
+		output stdout
+		format json
+	}
+	respond "canary" 200
+}

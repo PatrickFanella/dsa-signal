@@ -1,0 +1,16 @@
+:8080 {
+  @health path /health
+  respond @health `{"status":"ok"}` 200
+
+  @metadata path /oidc/.well-known/openid-configuration /oidc/.well-known/oauth-authorization-server /.well-known/openid-configuration/oidc /.well-known/oauth-authorization-server/oidc
+  header @metadata Content-Type application/json
+  respond @metadata `{"issuer":"https://chat.localhost:8443/oidc","authorization_endpoint":"https://chat.localhost:8443/oidc/authorize","token_endpoint":"https://chat.localhost:8443/oidc/token","jwks_uri":"https://chat.localhost:8443/oidc/jwks","response_types_supported":["code"],"grant_types_supported":["authorization_code"],"token_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"],"scopes_supported":["openid","dsa_signal_entitlement"],"claims_supported":["sub","dsa_signal_entitlement"]}` 200
+
+  @jwks path /oidc/jwks
+  header @jwks Content-Type application/json
+  respond @jwks `{"keys":[{"kty":"RSA","kid":"task8-public-test-key","use":"sig","alg":"RS256","n":"sXchS0A4Usj0OQL0x9zPGyqo1xpkhPcqPmmjLJ0nnVdVY1Mt8IbiLCbJq-FooTbrTnS6T5zNzl_yNRzqBZQDBvQQcHJiX4TJAtQ0fr1JDF0e0ANz3_sX0qZ8PYOKZP5wv3AcbEJVB_OOeVN8hgVytNEdOAqO6wxazLVkTHrq_Fb7SU","e":"AQAB"}]}` 200
+
+  @blocked path /oidc/authorize /oidc/token
+  respond @blocked `{"error":"task8_metadata_fixture"}` 400
+  respond 404
+}

@@ -1,0 +1,4 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { localVerdict, runLocal } from './test-task9-local.mjs';
+test('local gate has one exact pending-G2 success verdict', () => { assert.equal(localVerdict({ scanner: true }), 'PASS_LOCAL_TASK9_PENDING_G2'); assert.throws(() => localVerdict({ scanner: false }), /failed/); });
+test('local gate runs intended bounded checks before returning', () => { const calls = []; assert.equal(runLocal((command, args) => calls.push([command, args])), 'PASS_LOCAL_TASK9_PENDING_G2'); assert.deepEqual(calls.map(x => x[0]), ['node', 'npm']); assert.match(calls[0][1].join(' '), /scan-task9/); });
+test('local gate never prints a success after a subprocess failure', () => { assert.throws(() => runLocal(() => { throw new Error('timeout'); }), /timeout/); });

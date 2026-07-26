@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17
+    image: ${POSTGRES_IMAGE:?use deploy/locks/images.env}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
@@ -16,19 +16,86 @@ services:
       retries: 5
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?use deploy/locks/images.env}
+        BUILD_MARKER: ${VITE_BUILD_MARKER:-development}
+    # Explicit allowlist: migration-owner, retention, and revocation credentials never enter the API container.
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-app}?sslmode=disable
+      APP_ENV: ${APP_ENV:?copy .env.example to .env and configure it}
+      DATABASE_URL: ${DATABASE_URL:?configure the runtime database URL}
+      CONTROL_PLANE_RUNTIME_ROLE: ${CONTROL_PLANE_RUNTIME_ROLE:?configure the runtime role}
+      CONTROL_PLANE_RETENTION_ROLE: ${CONTROL_PLANE_RETENTION_ROLE:?configure the retention role name}
+      CONTROL_PLANE_REVOCATION_ROLE: ${CONTROL_PLANE_REVOCATION_ROLE:?configure the revocation role name}
+      PORT: ${PORT:-8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?configure PUBLIC_BASE_URL}
+      FOUNDATION_BASE_URL: ${FOUNDATION_BASE_URL:?configure FOUNDATION_BASE_URL}
+      PWA_ORIGIN: ${PWA_ORIGIN:?configure PWA_ORIGIN}
+      OIDC_SECTOR: ${OIDC_SECTOR:?configure OIDC_SECTOR}
+      OIDC_EPOCH: ${OIDC_EPOCH:?configure OIDC_EPOCH}
+      OIDC_TRUSTED_PROXY_ADDRESS: ${OIDC_TRUSTED_PROXY_ADDRESS:?configure OIDC_TRUSTED_PROXY_ADDRESS}
+      MAS_CLIENT_ID: ${MAS_CLIENT_ID:?configure MAS_CLIENT_ID}
+      MAS_REDIRECT_URI: ${MAS_REDIRECT_URI:?configure MAS_REDIRECT_URI}
+      OIDC_SIGNING_JWKS_PATH: /run/secrets/oidc-signing-jwks.json
+      MAS_CLIENT_SECRET_PATH: /run/secrets/mas-client-secret
+      OIDC_COOKIE_KEYS_PATH: /run/secrets/oidc-cookie-keys.json
+      OIDC_RESTORE_FLOOR_DIR: /var/lib/dsa-signal/oidc-restore-floor
+      OIDC_RESTORE_FLOOR_HEAD: ${OIDC_RESTORE_FLOOR_HEAD:?configure the external restore-floor head}
+      COOKIE_SECURE: ${COOKIE_SECURE:?configure COOKIE_SECURE}
+      COOKIE_KEY: ${COOKIE_KEY:?generate COOKIE_KEY}
+      SUBJECT_KEY_RING: ${SUBJECT_KEY_RING:?generate SUBJECT_KEY_RING}
+      ENVELOPE_KEY_RING: ${ENVELOPE_KEY_RING:?generate ENVELOPE_KEY_RING}
+      CHALLENGE_KEY_RING: ${CHALLENGE_KEY_RING:?generate CHALLENGE_KEY_RING}
+      SESSION_BINDING_KEY_RING: ${SESSION_BINDING_KEY_RING:?generate SESSION_BINDING_KEY_RING}
+      JTI_KEY_RING: ${JTI_KEY_RING:?generate JTI_KEY_RING}
+      IDEMPOTENCY_KEY_RING: ${IDEMPOTENCY_KEY_RING:?generate IDEMPOTENCY_KEY_RING}
+      REQUEST_FINGERPRINT_KEY_RING: ${REQUEST_FINGERPRINT_KEY_RING:?generate REQUEST_FINGERPRINT_KEY_RING}
+      OIDC_ADAPTER_KEY_RING: ${OIDC_ADAPTER_KEY_RING:?generate OIDC_ADAPTER_KEY_RING}
+      OIDC_INDEX_KEY_RING: ${OIDC_INDEX_KEY_RING:?generate OIDC_INDEX_KEY_RING}
+      REVOCATION_EVIDENCE_KEY_RING: ${REVOCATION_EVIDENCE_KEY_RING:?generate REVOCATION_EVIDENCE_KEY_RING}
+      ROOT_DIDS: ${ROOT_DIDS:?configure ROOT_DIDS}
+      ROOT_PUBLIC_JWKS: ${ROOT_PUBLIC_JWKS:?configure ROOT_PUBLIC_JWKS}
+      AUTHORITY_POLICY_VERSION: ${AUTHORITY_POLICY_VERSION:?configure AUTHORITY_POLICY_VERSION}
+      POLICY_MAX_STALENESS_SECONDS: ${POLICY_MAX_STALENESS_SECONDS:?configure policy staleness}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "${API_PORT:-8080}:8080"
+    secrets:
+      - source: oidc_signing_jwks
+        target: oidc-signing-jwks.json
+        mode: 0400
+      - source: mas_client_secret
+        target: mas-client-secret
+        mode: 0400
+      - source: oidc_cookie_keys
+        target: oidc-cookie-keys.json
+        mode: 0400
+    volumes:
+      - ${OIDC_RESTORE_FLOOR_DIR:?configure immutable restore floor directory}:/var/lib/dsa-signal/oidc-restore-floor:ro
 
   web:
-    build: ./web
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?use deploy/locks/images.env}
+        NGINX_IMAGE: ${NGINX_IMAGE:?use deploy/locks/images.env}
+        BUILD_MARKER: ${VITE_BUILD_MARKER:-development}
+        VITE_BUILD_MARKER: ${VITE_BUILD_MARKER:-development}
     ports:
       - "${WEB_PORT:-5173}:80"
 
 volumes:
   postgres-data:
+
+secrets:
+  oidc_signing_jwks:
+    file: ${OIDC_SIGNING_JWKS_SOURCE:?configure host-only secret source}
+  mas_client_secret:
+    file: ${MAS_CLIENT_SECRET_SOURCE:?configure host-only secret source}
+  oidc_cookie_keys:
+    file: ${OIDC_COOKIE_KEYS_SOURCE:?configure host-only secret source}

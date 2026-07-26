@@ -1,0 +1,32 @@
+diff --git a/lib/rust-crypto/rust-crypto.js b/lib/rust-crypto/rust-crypto.js
+index f027b36e1201f43dc283ee53c8913156b09bca76..0b73cf6a956ced46cae4d1f5b05eb71961e97a91 100644
+--- a/lib/rust-crypto/rust-crypto.js
++++ b/lib/rust-crypto/rust-crypto.js
+@@ -890,7 +890,7 @@ export class RustCrypto extends TypedEventEmitter {
+     const requests = this.olmMachine.getVerificationRequests(new RustSdkCryptoJs.UserId(userId));
+ 
+     // Search for the verification request for the given room id
+-    const request = requests.find(request => request.roomId?.toString() === roomId && !request.isCancelled());
++    const request = requests.find(request => request.roomId?.toString() === roomId && !request.isCancelled() && !request.isDone() && !request.isPassive());
+     if (request) {
+       return this.makeVerificationRequest(request);
+     }
+diff --git a/src/rust-crypto/rust-crypto.ts b/src/rust-crypto/rust-crypto.ts
+index e130a746439021673d7b7f3f2ef78b83698819da..02d3e5152a4bc93c2ecbebc490196f21d0764350 100644
+--- a/src/rust-crypto/rust-crypto.ts
++++ b/src/rust-crypto/rust-crypto.ts
+@@ -1148,7 +1148,13 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+         );
+ 
+         // Search for the verification request for the given room id
+-        const request = requests.find((request) => request.roomId?.toString() === roomId && !request.isCancelled());
++        const request = requests.find(
++            (request) =>
++                request.roomId?.toString() === roomId &&
++                !request.isCancelled() &&
++                !request.isDone() &&
++                !request.isPassive(),
++        );
+ 
+         if (request) {
+             return this.makeVerificationRequest(request);
