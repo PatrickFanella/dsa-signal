@@ -15,4 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify template baseline
-        run: make verify
+        run: |
+          if ! command -v tini >/dev/null; then
+            if [ "$(id -u)" = 0 ]; then
+              apt-get update && apt-get install -y --no-install-recommends tini
+            else
+              sudo apt-get update && sudo apt-get install -y --no-install-recommends tini
+            fi
+          fi
+          exec tini -s -- make verify
