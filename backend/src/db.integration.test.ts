@@ -221,11 +221,22 @@ describe('control-plane migration', () => {
     try {
       const image = await approvedPostgresImage();
       await docker('image', 'inspect', image);
-      containerId = await docker('create', '--name', container, ...Object.entries(containerLabels).flatMap(([key, value]) => ['--label', `${key}=${value}`]), '-e', 'POSTGRES_PASSWORD=test', '-e', 'POSTGRES_DB=test_control_plane', '-p', '127.0.0.1::5432', image);
+      // A hosted job talks to a sibling Docker daemon. Share its network
+      // namespace so the fixture remains reachable only through job loopback.
+      let networkArgs = ['-p', '127.0.0.1::5432'];
+      const runner = process.env.GITHUB_ACTIONS === 'true' || process.env.GITEA_ACTIONS === 'true' ? process.env.HOSTNAME : undefined;
+      if (runner) {
+        try {
+          const runnerId = await docker('inspect', '--type', 'container', '--format', '{{.Id}}', runner);
+          if (!/^[a-f0-9]{64}$/.test(runnerId)) throw new Error('Docker returned an invalid runner container ID');
+          networkArgs = ['--network', `container:${runnerId}`];
+        } catch (error) { if (!isExactContainerAbsence(error, runner)) throw error; }
+      }
+      containerId = await docker('create', '--name', container, ...Object.entries(containerLabels).flatMap(([key, value]) => ['--label', `${key}=${value}`]), '-e', 'POSTGRES_PASSWORD=test', '-e', 'POSTGRES_DB=test_control_plane', ...networkArgs, image);
       if (!/^[a-f0-9]{64}$/.test(containerId)) throw new Error('Docker returned an invalid PostgreSQL container ID');
       await docker('start', containerId);
-      const port = (await docker('port', containerId, '5432/tcp')).match(/^127\.0\.0\.1:(\d+)$/m)?.[1]; if (!port) throw new Error('Could not discover loopback PostgreSQL test port'); postgresPort = port;
-      pool = new Pool({ connectionString: `postgresql://postgres:test@127.0.0.1:${postgresPort}/test_control_plane` });
+      const port = networkArgs[0] === '--network' ? '5432' : (await docker('port', containerId, '5432/tcp')).match(/^127\.0\.0\.1:(\d+)$/m)?.[1]; if (!port) throw new Error('Could not discover loopback PostgreSQL test port'); postgresPort = port;
+      pool = new Pool({ connectionString: `postgresql://postgres:test@127.0.0.1:${postgresPort}/test_control_plane`, connectionTimeoutMillis: 1_000 });
       await ready(); await pool.query(`CREATE ROLE ${runtime} LOGIN PASSWORD 'runtime-test-only'; CREATE ROLE ${retention} LOGIN PASSWORD 'retention-test-only'; CREATE ROLE ${revocation} LOGIN PASSWORD 'revocation-test-only'`); await applyControlPlaneMigration(pool, runtime, retention, undefined, revocation, evidenceKeyIds);
     } catch (error) { await pool?.end().catch(() => undefined); await removeOwnedContainer(); throw error; }
   }, 30_000);

@@ -343,7 +343,7 @@ packages:
     engines: {node: '>=18'}
 
   '@dsaslate/foundation-client@0.2.0':
-    resolution: {integrity: sha512-G4TgMdOln3TPAVHeivHQ2wy/IGLTUSDygcQwxxMgo5OyzbSNhihNnZlsKUKKArkP/2R4l8t4JRNheQC3CYwLFw==, tarball: https://git.subcult.tv/api/packages/subculture-collective/npm/%40dsaslate%2Ffoundation-client/-/0.2.0/foundation-client-0.2.0.tgz}
+    resolution: {integrity: sha512-G4TgMdOln3TPAVHeivHQ2wy/IGLTUSDygcQwxxMgo5OyzbSNhihNnZlsKUKKArkP/2R4l8t4JRNheQC3CYwLFw==, tarball: https://git.subcult.tv/api/packages/subculture-collective/npm/@dsaslate%2Ffoundation-client/-/0.2.0/foundation-client-0.2.0.tgz}
     engines: {node: '>=20'}
 
   '@esbuild/aix-ppc64@0.27.7':

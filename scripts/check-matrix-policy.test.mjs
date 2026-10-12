@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   checkMatrixPolicy,
+  caddyAdaptArgs,
   checkSecretOverlay,
   canonicalJson,
   main,
@@ -69,21 +70,8 @@ async function fixture() {
   const adaptedCaddy = JSON.parse(
     execFileSync(
       "docker",
-      [
-        "run",
-        "--rm",
-        "-v",
-        `${root}deploy/local/gateway/Caddyfile:/etc/caddy/Caddyfile:ro`,
-        locks.CADDY_IMAGE,
-        "caddy",
-        "adapt",
-        "--validate",
-        "--config",
-        "/etc/caddy/Caddyfile",
-        "--adapter",
-        "caddyfile",
-      ],
-      { encoding: "utf8" },
+      caddyAdaptArgs(locks.CADDY_IMAGE),
+      { encoding: "utf8", input: await read("deploy/local/gateway/Caddyfile") },
     ),
   );
   cached = {
@@ -120,7 +108,7 @@ async function fixture() {
 test("accepts rendered full and negative policy and CLI renderer", async () => {
   const f = await fixture();
   assert.equal(checkMatrixPolicy(f), true);
-  const runner = async (_command, args) => JSON.stringify(args[0] === "compose" ? f.compose : args.some((x) => String(x).includes("canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : f.adaptedCaddy);
+  const runner = async (_command, args, _cwd, options) => JSON.stringify(args[0] === "compose" ? f.compose : (options?.input === await read("deploy/local/canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : f.adaptedCaddy);
   const prior = process.env.MATRIX_POLICY_ENV_FILE;
   process.env.MATRIX_POLICY_ENV_FILE = "/tmp/unreviewed-policy.env";
   try {
@@ -139,7 +127,7 @@ test("goldens are canonical, normalized, and reject rendered-policy drift", asyn
   const reject = async (mutate, caddy = false) => {
     const changed = copy(f);
     mutate(caddy ? changed.adaptedCaddy : changed.compose);
-    const runner = async (_command, args) => JSON.stringify(args[0] === "compose" ? changed.compose : args.some((x) => String(x).includes("canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : changed.adaptedCaddy);
+    const runner = async (_command, args, _cwd, options) => JSON.stringify(args[0] === "compose" ? changed.compose : (options?.input === await read("deploy/local/canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : changed.adaptedCaddy);
     assert.equal(await main({ root, runner }), 1);
   };
   await reject((x) => { x.services.gateway.volumes[0].source = "/tmp/evil"; });
@@ -318,7 +306,7 @@ test("CLI reads only the rendered top-level overlay bindings", async () => {
   for (const path of ["/missing.yaml", bad]) {
     const changed = copy(f);
     changed.compose.secrets["synapse-secrets.yaml"].file = path;
-    const runner = async (_command, args) => JSON.stringify(args[0] === "compose" ? changed.compose : args.some((x) => String(x).includes("canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : changed.adaptedCaddy);
+    const runner = async (_command, args, _cwd, options) => JSON.stringify(args[0] === "compose" ? changed.compose : (options?.input === await read("deploy/local/canary/Caddyfile")) ? JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json")) : changed.adaptedCaddy);
     assert.equal(await main({ root, runner }), 1);
   }
 });
@@ -345,6 +333,12 @@ test("CLI rejects a mutated canary adapted configuration", async () => {
   const f = await fixture();
   const canary = JSON.parse(await read("deploy/local/policy-fixtures/canary.adapted.json"));
   canary.apps.http.servers.srv0.routes[0].handle[0].body = "open";
-  const runner = async (_command, args) => JSON.stringify(args[0] === "compose" ? f.compose : args.some((x) => String(x).includes("canary/Caddyfile")) ? canary : f.adaptedCaddy);
+  const runner = async (_command, args, _cwd, options) => JSON.stringify(args[0] === "compose" ? f.compose : (options?.input === await read("deploy/local/canary/Caddyfile")) ? canary : f.adaptedCaddy);
   assert.equal(await main({ root, runner }), 1);
+});
+
+test("subprocess runner forwards supplied configuration through stdin", async () => {
+  const input = "fixture configuration\n";
+  const output = await run(process.execPath, ["-e", "process.stdin.pipe(process.stdout)"], root, { input });
+  assert.equal(output, input);
 });

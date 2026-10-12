@@ -808,10 +808,10 @@ export function checkMatrixPolicy({
   checkSecretOverlay("mas", masOverlay);
   return true;
 }
-export const run = (command, args, cwd, { timeoutMs = COMMAND_TIMEOUT_MS, maxBytes = COMMAND_MAX_BYTES } = {}) =>
+export const run = (command, args, cwd, { timeoutMs = COMMAND_TIMEOUT_MS, maxBytes = COMMAND_MAX_BYTES, input } = {}) =>
   new Promise((ok, no) => {
     const grouped = process.platform === "linux";
-    const p = spawn(command, args, { cwd, detached: grouped, stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(command, args, { cwd, detached: grouped, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
     let out = ""; let err = ""; let settled = false; let limited = false;
     const finish = (fn, value) => { if (!settled) { settled = true; clearTimeout(timer); fn(value); } };
     const signal = (name) => {
@@ -832,11 +832,13 @@ export const run = (command, args, cwd, { timeoutMs = COMMAND_TIMEOUT_MS, maxByt
     });
     p.stderr.on("data", (x) => { if (!limited) { err += x; if (Buffer.byteLength(err) > maxBytes) limit(); } });
     const timer = setTimeout(limit, timeoutMs);
+    if (input !== undefined) { p.stdin.on("error", limit); p.stdin.end(input); }
     p.on("error", (error) => finish(no, error));
     p.on("close", (code) =>
       !limited && code === 0 && Buffer.byteLength(out) <= maxBytes && Buffer.byteLength(err) <= maxBytes ? finish(ok, out) : finish(no, Error("command failed")),
     );
   });
+export const caddyAdaptArgs = image => ["run", "--rm", "-i", "--entrypoint", "sh", image, "-c", "cat > /etc/caddy/Caddyfile && exec caddy adapt --validate --config /etc/caddy/Caddyfile --adapter caddyfile"];
 export async function main({ root = process.cwd(), runner = run } = {}) {
   try {
     const read = (f) => readFile(resolve(root, f), "utf8");
@@ -863,25 +865,12 @@ export async function main({ root = process.cwd(), runner = run } = {}) {
         ],
         root,
       ),
-      runner(
+      ...["gateway", "canary"].map(async (service) => runner(
         "docker",
-        [
-          "run",
-          "--rm",
-          "-v",
-          `${resolve(root, "deploy/local/gateway/Caddyfile")}:/etc/caddy/Caddyfile:ro`,
-          locks.CADDY_IMAGE,
-          "caddy",
-          "adapt",
-          "--validate",
-          "--config",
-          "/etc/caddy/Caddyfile",
-          "--adapter",
-          "caddyfile",
-        ],
+        caddyAdaptArgs(locks.CADDY_IMAGE),
         root,
-      ),
-      runner("docker", ["run", "--rm", "-v", `${resolve(root, "deploy/local/canary/Caddyfile")}:/etc/caddy/Caddyfile:ro`, locks.CADDY_IMAGE, "caddy", "adapt", "--validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"], root),
+        { input: await read(`deploy/local/${service}/Caddyfile`) },
+      )),
       read("deploy/local/synapse/homeserver.yaml"),
       read("deploy/local/mas/config.yaml"),
       read("deploy/local/well-known/matrix-client.json"),
