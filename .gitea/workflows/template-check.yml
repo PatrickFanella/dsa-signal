@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Pull locked Postgres image
+        run: docker pull "$(sed -n 's/^POSTGRES_IMAGE=//p' deploy/locks/images.env)"
       - name: Verify template baseline
         run: |
           if ! command -v tini >/dev/null; then
