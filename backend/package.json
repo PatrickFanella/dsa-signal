@@ -1,5 +1,5 @@
 {
-  "name": "@subculture/project-template-ts-vite-react-ts-postgres-docker-api",
+  "name": "dsa-signal-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
