@@ -28,7 +28,7 @@ body:
       label: Context
       description: Links, files, existing behavior, constraints, and any product or domain background needed.
       placeholder: |
-        - Relevant files: README.md, docs/stacks.md
+        - Relevant files: README.md, docs/README.md
         - Keep this docs-only; do not add application scaffolding.
     validations:
       required: true

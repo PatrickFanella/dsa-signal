@@ -2,15 +2,13 @@
 
 ## Supported scope
 
-This repository is a public base template. Security work here focuses on safe defaults, secret hygiene, and guidance for derived projects.
-
-Derived repositories should add stack-specific security policy details before production use.
+dsa-signal is in development and has no supported release yet. The security boundary it aims for is described in [docs/reference/privacy-and-threat-contract.md](docs/reference/privacy-and-threat-contract.md).
 
 ## Reporting a vulnerability
 
 Do not publish sensitive vulnerabilities in public issues.
 
-Report privately to the repository owner or organization maintainer through the preferred private channel for the project. If no project-specific channel exists, contact the maintainer account for the Gitea organization.
+Report privately through [GitHub private vulnerability reporting](https://github.com/subculture-collective/dsa-signal/security/advisories/new).
 
 Include:
 
@@ -35,13 +33,10 @@ Use placeholders in docs and examples. Report only secret key names and presence
 
 ## Dependency and supply-chain hygiene
 
-Derived templates should:
-
-- commit lockfiles for application projects when the stack expects them
-- pin container base images deliberately
-- document update procedures
-- run dependency and container scans where appropriate
-- keep generated caches out of git
+- The pnpm lockfile is committed and installs use `--frozen-lockfile`.
+- Container images are pinned by digest in `deploy/locks/images.env`, with their review record in `deploy/locks/images.provenance.json`. A digest change needs operator approval.
+- `matrix-js-sdk` and `oidc-provider` are pinned to exact versions that the tests check.
+- Keep generated caches out of git.
 
 ## Open Pilot safety
 

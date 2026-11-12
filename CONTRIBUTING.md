@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is a base template for derived SUBCULT projects. Keep changes small, reviewable, and useful across stacks.
+dsa-signal is a members-only encrypted chat app; [README.md](README.md) describes it. Keep changes small and reviewable.
 
 ## Development flow
 
@@ -13,7 +13,7 @@ This repository is a base template for derived SUBCULT projects. Keep changes sm
    make verify
    ```
 
-5. Open a pull request using the PR template.
+5. Open a pull request on GitHub against `main`.
 6. Link the issue with `Closes #N` when appropriate.
 
 ## Commit style
@@ -21,10 +21,10 @@ This repository is a base template for derived SUBCULT projects. Keep changes sm
 Prefer concise conventional-style subjects:
 
 ```text
-feat: add stack recipe
+feat: add encrypted direct chat
 docs: update Open Pilot guidance
 fix: correct make target detection
-chore: refresh template metadata
+chore: refresh dependencies
 ```
 
 ## Open Pilot issues
@@ -56,18 +56,11 @@ Default full check:
 make verify
 ```
 
-Examples for derived templates:
+Narrower examples:
 
 ```bash
-go test ./...
-pnpm --dir web run test
-uv run pytest
-cargo test --all
-docker compose config --quiet
+pnpm --filter '*api' run test
+pnpm --filter '*web' run test
+node --test scripts/*.test.mjs
+make compose-config
 ```
-
-## Template boundaries
-
-This base template should stay stack-neutral. Do not add application scaffolding here unless the issue explicitly changes the role of this repository.
-
-Stack-specific scaffolds should live in derived template repositories.
