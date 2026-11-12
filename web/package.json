@@ -19,25 +19,25 @@
   },
   "dependencies": {
     "matrix-js-sdk": "42.0.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@playwright/test": "1.55.0",
-    "@types/node": "^24.10.1",
-    "@testing-library/react": "16.3.0",
-    "@tailwindcss/vite": "^4.1.17",
-    "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
-    "eslint": "^9.39.4",
-    "fake-indexeddb": "6.2.5",
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.55.1",
+    "@tailwindcss/vite": "^4.3.5",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "eslint": "^9.39.5",
+    "fake-indexeddb": "6.2.8",
     "jsdom": "26.1.0",
-    "tailwindcss": "^4.1.17",
+    "tailwindcss": "^4.3.5",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.3",
-    "vite": "^7.2.7",
-    "vitest": "^4.0.8"
+    "typescript-eslint": "^8.72.2",
+    "vite": "^7.3.8",
+    "vitest": "^4.1.12"
   }
 }

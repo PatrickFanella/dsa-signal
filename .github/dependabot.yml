@@ -1,0 +1,46 @@
+# Quiet by design: one grouped minor/patch pull request per ecosystem each
+# month, direct dependencies only, no major versions. Green pull requests in
+# this organization merge themselves, so anything that needs review or a code
+# change is ignored here and updated by hand.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Pinned to 42.0.0 with a reviewed patch (patches/); the Rust crypto
+      # build it loads moves with it.
+      - dependency-name: matrix-js-sdk
+      - dependency-name: "@matrix-org/matrix-sdk-crypto-wasm"
+      # Pinned to 9.9.1 by the MAS compatibility harness and its contract
+      # (docs/reference/mas-upstream-oidc-contract.md).
+      - dependency-name: oidc-provider
+      # Canonical JSON and YAML handling feeds signatures and reviewed
+      # render fixtures; update these by hand.
+      - dependency-name: lossless-json
+      - dependency-name: yaml
+      # Browser gates are qualified against one Playwright release.
+      - dependency-name: "@playwright/test"
+      # Internal package from the organization registry.
+      - dependency-name: "@dsaslate/foundation-client"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

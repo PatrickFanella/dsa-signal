@@ -16,8 +16,8 @@
     "format": "pnpm -r --if-present run format"
   },
   "devDependencies": {
-    "eslint": "^9.39.4",
-    "vitest": "^4.1.7",
+    "eslint": "^9.39.5",
+    "vitest": "^4.1.12",
     "yaml": "2.8.2"
   }
 }

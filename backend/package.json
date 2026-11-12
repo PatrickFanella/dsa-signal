@@ -20,20 +20,20 @@
   },
   "dependencies": {
     "@dsaslate/foundation-client": "0.2.0",
-    "jose": "6.2.3",
+    "jose": "6.2.17",
     "lossless-json": "4.2.0",
     "oidc-provider": "9.9.1",
-    "pg": "^8.16.3",
-    "zod": "^4.1.13"
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^24.10.1",
-    "@types/pg": "^8.15.6",
-    "eslint": "^9.39.4",
-    "tsx": "^4.20.6",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "eslint": "^9.39.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.3",
-    "vitest": "^4.0.8"
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^4.1.12"
   }
 }
